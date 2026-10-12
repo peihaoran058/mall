@@ -1,0 +1,599 @@
+{
+  "info": {
+    "name": "mall 电商实战项目",
+    "description": "SpringBoot 电商实战课配套接口集合。\n\n使用说明：\n1. 先导入本文件（Postman / Apifox 均可）\n2. 修改集合变量 baseUrl（默认 http://localhost:8080）\n3. 按「01 认证」→「02 商品」→「03 购物车」→「04 订单」→「05 后台」顺序调\n4. 「09 课堂演示」是错误演示专用接口，不需要登录\n\n账号：zhangsan / 123456      管理员：admin / 123456",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "token", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "productId", "value": "1" },
+    { "key": "orderNo", "value": "" },
+    { "key": "cartId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 认证（用户端）",
+      "item": [
+        {
+          "name": "1.1 注册",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"wangwu\",\n  \"password\": \"123456\",\n  \"confirmPassword\": \"123456\",\n  \"nickname\": \"王五\",\n  \"phone\": \"13800000003\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/user/register", "host": ["{{baseUrl}}"], "path": ["api", "user", "register"] },
+            "description": "成功返回 code=200。重复注册返回 code=1001「用户名已存在」。\n两次密码不一致返回 code=1005。"
+          }
+        },
+        {
+          "name": "1.2 登录（自动保存 token）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.code === 200 && json.data && json.data.token) {",
+                  "    pm.collectionVariables.set('token', json.data.token);",
+                  "    console.log('token 已保存：' + json.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"zhangsan\",\n  \"password\": \"123456\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/user/login", "host": ["{{baseUrl}}"], "path": ["api", "user", "login"] },
+            "description": "登录成功后脚本会自动把 token 写入集合变量 token。"
+          }
+        },
+        {
+          "name": "1.3 获取个人信息（需登录）",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/user/info", "host": ["{{baseUrl}}"], "path": ["api", "user", "info"] },
+            "description": "不带 token 时返回 code=401「未登录或登录已过期」——这是第 4 课时的拦截器演示点。\n注意返回体里没有 password 字段（@JsonIgnore）。"
+          }
+        },
+        {
+          "name": "1.4 修改个人信息",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"nickname\": \"张三丰\",\n  \"phone\": \"13800000001\",\n  \"email\": \"zhangsan@mall.com\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/user/info", "host": ["{{baseUrl}}"], "path": ["api", "user", "info"] },
+            "description": "课堂演示：在请求体里偷偷加上 \"status\":1 或 \"password\":\"123\"，观察是否生效（应该不生效，因为用的是 DTO）。"
+          }
+        },
+        {
+          "name": "1.5 退出登录",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/user/logout", "host": ["{{baseUrl}}"], "path": ["api", "user", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 分类与商品（用户端）",
+      "item": [
+        {
+          "name": "2.1 分类树（免登录）",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/category/tree", "host": ["{{baseUrl}}"], "path": ["api", "category", "tree"] },
+            "description": "返回两级树：一级分类带 children。"
+          }
+        },
+        {
+          "name": "2.2 商品分页",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/product/page?pageNum=1&pageSize=10&categoryId=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "product", "page"],
+              "query": [
+                { "key": "pageNum", "value": "1" },
+                { "key": "pageSize", "value": "10" },
+                { "key": "categoryId", "value": "1", "description": "一级分类 id=1「手机数码」，应该能查出其二级分类下的商品" },
+                { "key": "name", "value": "", "disabled": true }
+              ]
+            },
+            "description": "课堂演示点：categoryId=1 是一级分类，商品挂在二级分类下，看能不能查出来。"
+          }
+        },
+        {
+          "name": "2.3 商品详情（走缓存）",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/product/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "product", "{{productId}}"] },
+            "description": "连续调两次：第一次控制台打印「>>> 缓存未命中，查询数据库」，第二次没有 SQL 输出。\n验证：redis-cli keys mall:cache:product*"
+          }
+        },
+        {
+          "name": "2.4 缓存穿透演示（不存在的 id）",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/product/9999/cache-test?mode=unprotected", "host": ["{{baseUrl}}"], "path": ["api", "product", "9999", "cache-test"], "query": [{ "key": "mode", "value": "unprotected" }] },
+            "description": "mode=unprotected → 每次都查库（穿透）\nmode=null-holder → 第二次直接返回空（缓存空对象）\nmode=mutex      → 互斥锁重建（击穿）"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 购物车（需登录）",
+      "item": [
+        {
+          "name": "3.1 加入购物车",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": 2,\n  \"quantity\": 1\n}" },
+            "url": { "raw": "{{baseUrl}}/api/cart/add", "host": ["{{baseUrl}}"], "path": ["api", "cart", "add"] },
+            "description": "课堂演示：连续调 3 次，购物车里不会出现 3 条记录，而是数量累加成 3。"
+          }
+        },
+        {
+          "name": "3.2 购物车列表",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/cart/list", "host": ["{{baseUrl}}"], "path": ["api", "cart", "list"] }
+          }
+        },
+        {
+          "name": "3.3 修改数量",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"cartId\": {{cartId}},\n  \"quantity\": 2\n}" },
+            "url": { "raw": "{{baseUrl}}/api/cart/quantity", "host": ["{{baseUrl}}"], "path": ["api", "cart", "quantity"] },
+            "description": "课堂演示越权：把 cartId 换成别人的 id，应该返回 code=3001「购物车中没有该商品」。"
+          }
+        },
+        {
+          "name": "3.4 删除购物车条目",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/cart/{{cartId}}", "host": ["{{baseUrl}}"], "path": ["api", "cart", "{{cartId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 订单（需登录）",
+      "item": [
+        {
+          "name": "4.1 提交订单",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.code === 200 && json.data && json.data.orderNo) {",
+                  "    pm.collectionVariables.set('orderNo', json.data.orderNo);",
+                  "    console.log('orderNo 已保存：' + json.data.orderNo);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"receiverName\": \"张三\",\n  \"receiverPhone\": \"13800000001\",\n  \"receiverAddress\": \"北京市朝阳区xx路1号\",\n  \"remark\": \"尽快发货\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/order/submit", "host": ["{{baseUrl}}"], "path": ["api", "order", "submit"] },
+            "description": "注意请求体里没有商品列表和金额 —— 金额由服务端从购物车 + 商品表重新计算。\n课堂演示：在请求体里加 \"totalAmount\": 0.01，观察是否生效（应该不生效）。"
+          }
+        },
+        {
+          "name": "4.2 我的订单",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/order/page?pageNum=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "order", "page"],
+              "query": [
+                { "key": "pageNum", "value": "1" },
+                { "key": "pageSize", "value": "10" },
+                { "key": "orderStatus", "value": "0", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.3 订单详情",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/order/{{orderNo}}", "host": ["{{baseUrl}}"], "path": ["api", "order", "{{orderNo}}"] },
+            "description": "返回体里的 items 是下单时存下的商品快照，改商品名/价格不影响这里。"
+          }
+        },
+        {
+          "name": "4.4 模拟支付",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/order/{{orderNo}}/pay", "host": ["{{baseUrl}}"], "path": ["api", "order", "{{orderNo}}", "pay"] },
+            "description": "重复支付会返回 code=4002「当前订单状态不允许该操作」。"
+          }
+        },
+        {
+          "name": "4.5 取消订单（回滚库存）",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/order/{{orderNo}}/cancel", "host": ["{{baseUrl}}"], "path": ["api", "order", "{{orderNo}}", "cancel"] },
+            "description": "取消后调 9.5 查看库存，应该加回去了。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 文件上传",
+      "item": [
+        {
+          "name": "5.1 上传图片",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "token", "value": "{{token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "module", "value": "product", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/file/upload", "host": ["{{baseUrl}}"], "path": ["api", "file", "upload"] },
+            "description": "⚠️ body 必须选 form-data，key 必须是 file，类型必须是 File。\n常见错误：用了 raw JSON → 报 Required request part 'file' is not present。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 后台管理（需管理员）",
+      "item": [
+        {
+          "name": "6.0 管理员登录",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.code === 200 && json.data && json.data.token) {",
+                  "    pm.collectionVariables.set('adminToken', json.data.token);",
+                  "    console.log('adminToken 已保存');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"123456\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/admin/login", "host": ["{{baseUrl}}"], "path": ["api", "admin", "login"] }
+          }
+        },
+        {
+          "name": "6.1 分类树（后台）",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "token", "value": "{{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/category/tree", "host": ["{{baseUrl}}"], "path": ["api", "admin", "category", "tree"] }
+          }
+        },
+        {
+          "name": "6.2 新增分类",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"parentId\": 0,\n  \"name\": \"运动户外\",\n  \"sort\": 4,\n  \"status\": 1\n}" },
+            "url": { "raw": "{{baseUrl}}/api/admin/category", "host": ["{{baseUrl}}"], "path": ["api", "admin", "category"] },
+            "description": "id 为空是新增，有 id 是修改。带上 id 且 parentId 等于 id 时返回「不能将分类的父级设置为自身」。"
+          }
+        },
+        {
+          "name": "6.3 删除分类",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "token", "value": "{{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/category/11", "host": ["{{baseUrl}}"], "path": ["api", "admin", "category", "11"] },
+            "description": "删除有商品的分类会返回 code=2005「该分类下还有商品，无法删除」。"
+          }
+        },
+        {
+          "name": "6.4 商品分页条件查询",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "token", "value": "{{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/product/page?pageNum=1&pageSize=10&name=&categoryId=&status=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "product", "page"],
+              "query": [
+                { "key": "pageNum", "value": "1" },
+                { "key": "pageSize", "value": "10" },
+                { "key": "name", "value": "", "description": "商品名称模糊匹配" },
+                { "key": "categoryId", "value": "", "description": "分类筛选" },
+                { "key": "status", "value": "1", "description": "1 上架 0 下架" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6.5 新增 / 修改商品",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"categoryId\": 11,\n  \"name\": \"测试商品-并发演示\",\n  \"subtitle\": \"用于第13课时压测\",\n  \"price\": 99.00,\n  \"originalPrice\": 199.00,\n  \"stock\": 10,\n  \"status\": 1,\n  \"sort\": 99\n}" },
+            "url": { "raw": "{{baseUrl}}/api/admin/product", "host": ["{{baseUrl}}"], "path": ["api", "admin", "product"] },
+            "description": "改完商品后，用户端商品详情缓存会被 @CacheEvict 清掉（课堂验证点）。"
+          }
+        },
+        {
+          "name": "6.6 商品上下架",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "token", "value": "{{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/product/{{productId}}/status?status=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "product", "{{productId}}", "status"],
+              "query": [{ "key": "status", "value": "0" }]
+            }
+          }
+        },
+        {
+          "name": "6.7 删除商品（逻辑删除）",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "token", "value": "{{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/product/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "admin", "product", "{{productId}}"] },
+            "description": "逻辑删除：数据库里 deleted 变成 1，数据还在。\n课堂验证：用户端商品列表应该看不到它了。"
+          }
+        },
+        {
+          "name": "6.8 后台订单分页",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "token", "value": "{{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/order/page?pageNum=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "order", "page"],
+              "query": [
+                { "key": "pageNum", "value": "1" },
+                { "key": "pageSize", "value": "10" },
+                { "key": "orderStatus", "value": "", "disabled": true },
+                { "key": "orderNo", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6.9 后台修改订单状态（发货）",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "token", "value": "{{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/order/{{orderNo}}/status?orderStatus=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "order", "{{orderNo}}", "status"],
+              "query": [{ "key": "orderStatus", "value": "2", "description": "2 已发货 3 已完成" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 监控",
+      "item": [
+        {
+          "name": "7.1 健康检查",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/actuator/health", "host": ["{{baseUrl}}"], "path": ["actuator", "health"] },
+            "description": "能看到 db 和 redis 的健康状态（因为配了 show-details: always）。"
+          }
+        },
+        {
+          "name": "7.2 应用信息",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/actuator/info", "host": ["{{baseUrl}}"], "path": ["actuator", "info"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 课堂演示（免登录）",
+      "item": [
+        {
+          "name": "9.1 业务异常统一返回",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/demo/exception/business", "host": ["{{baseUrl}}"], "path": ["api", "demo", "exception", "business"] },
+            "description": "返回 code=1001「用户名已存在」，验证统一返回 + 全局异常。"
+          }
+        },
+        {
+          "name": "9.2 系统异常兜底",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/demo/exception/system", "host": ["{{baseUrl}}"], "path": ["api", "demo", "exception", "system"] },
+            "description": "返回 code=500「系统繁忙，请稍后重试」，控制台有完整堆栈。"
+          }
+        },
+        {
+          "name": "9.3 事务实验-回滚成功",
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('tag', 'TX-' + Date.now());"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/tx/rollback-success?tag={{tag}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "tx", "rollback-success"],
+              "query": [{ "key": "tag", "value": "{{tag}}" }]
+            },
+            "description": "期望 remaining = 0（事务已回滚）。"
+          }
+        },
+        {
+          "name": "9.4 事务实验-缺 rollbackFor",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/tx/rollback-fail?tag={{tag}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "tx", "rollback-fail"],
+              "query": [{ "key": "tag", "value": "{{tag}}" }]
+            },
+            "description": "期望 remaining = 1（事务失效，脏数据入库）。"
+          }
+        },
+        {
+          "name": "9.5 事务实验-异常被吃掉",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/tx/rollback-fail-catch?tag={{tag}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "tx", "rollback-fail-catch"],
+              "query": [{ "key": "tag", "value": "{{tag}}" }]
+            },
+            "description": "期望 remaining = 1（最隐蔽的一种事务失效）。"
+          }
+        },
+        {
+          "name": "9.6 事务实验-同类自调用",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/tx/rollback-fail-self?tag={{tag}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "tx", "rollback-fail-self"],
+              "query": [{ "key": "tag", "value": "{{tag}}" }]
+            },
+            "description": "期望 remaining = 1（动态代理被绕过）。"
+          }
+        },
+        {
+          "name": "9.7 清理事务实验数据",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/demo/tx/clean", "host": ["{{baseUrl}}"], "path": ["api", "demo", "tx", "clean"] }
+          }
+        },
+        {
+          "name": "9.8 @Async 异步生效",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/async/ok?orderNo=TEST-OK",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "async", "ok"],
+              "query": [{ "key": "orderNo", "value": "TEST-OK" }]
+            },
+            "description": "看控制台线程名：应该是 mall-async-*。\nSQL 验证：SELECT thread_name FROM order_log WHERE order_no='TEST-OK';"
+          }
+        },
+        {
+          "name": "9.9 @Async 自调用失效",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/async/fail?orderNo=TEST-FAIL",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "async", "fail"],
+              "query": [{ "key": "orderNo", "value": "TEST-FAIL" }]
+            },
+            "description": "看控制台线程名：会是 http-nio-8080-exec-*，说明异步失效。"
+          }
+        },
+        {
+          "name": "9.10 查看当前下单版本",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/demo/order/version", "host": ["{{baseUrl}}"], "path": ["api", "demo", "order", "version"] },
+            "description": "改 application.yml 的 mall.order.version 后重启，这里能看到变化。"
+          }
+        },
+        {
+          "name": "9.11 压测前-重置库存",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/stock/reset?productId=1&stock=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "stock", "reset"],
+              "query": [
+                { "key": "productId", "value": "1" },
+                { "key": "stock", "value": "10" }
+              ]
+            },
+            "description": "第 13 课时压测的第一步。"
+          }
+        },
+        {
+          "name": "9.12 压测前-清理订单",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/demo/orders/clean", "host": ["{{baseUrl}}"], "path": ["api", "demo", "orders", "clean"] }
+          }
+        },
+        {
+          "name": "9.13 压测后-查看库存（是否超卖）",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/demo/stock?productId=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "demo", "stock"],
+              "query": [{ "key": "productId", "value": "1" }]
+            },
+            "description": "stock 为负数、oversell=true 说明超卖复现。"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mall.mapper.ShoppingCartMapper">
+
+    <select id="selectCartListByUserId" resultType="com.example.mall.vo.CartItemVO">
+        select c.id       as cartId,
+               c.user_id  as userId,
+               c.product_id as productId,
+               c.quantity as quantity,
+               c.selected as selected,
+               p.name     as productName,
+               p.cover    as productCover,
+               p.price    as price,
+               p.stock    as stock,
+               p.status   as productStatus
+        from shopping_cart c
+                 left join product p
+                           on p.id = c.product_id and p.deleted = 0
+        where c.user_id = #{userId}
+        order by c.update_time desc, c.id desc
+    </select>
+
+    <!--
+        批量删除：必须带 user_id 条件！
+        只按 id 删的话，恶意用户构造别人的 cartId 就能删掉别人的购物车
+        —— 这就是「水平越权」，写业务 SQL 时最容易忘的一条。
+    -->
+    <delete id="deleteBatchByIds">
+        delete from shopping_cart
+        where user_id = #{userId}
+        and id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

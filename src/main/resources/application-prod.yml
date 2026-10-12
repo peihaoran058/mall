@@ -1,0 +1,37 @@
+# ==========================================================
+# 生产环境：敏感信息用环境变量注入，绝不写死在代码里
+# java -jar mall.jar --spring.profiles.active=prod
+# ==========================================================
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DB:mall}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:123456}
+    hikari:
+      pool-name: MallHikariPool
+      minimum-idle: 10
+      maximum-pool-size: 50
+      connection-timeout: 30000
+
+  redis:
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: 0
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    root: info
+    com.example.mall: info
+  file:
+    name: logs/mall.log
+
+mall:
+  upload:
+    path: /data/mall/upload/
+    url-prefix: /upload/

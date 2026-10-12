@@ -1,0 +1,77 @@
+# ==========================================================
+# 主配置：只放"所有环境都一样"的东西（笔记 3.4 多环境 Profile）
+# ==========================================================
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: mall
+  profiles:
+    active: dev          # 打包上线时用 java -jar mall.jar --spring.profiles.active=prod 覆盖
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher   # SpringBoot2.7 兼容写法，避免路径匹配报错
+
+# ---------------- MyBatis-Plus ----------------
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.example.mall.entity
+  configuration:
+    map-underscore-to-camel-case: true      # 下划线转驼峰：create_time -> createTime
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto                          # 主键自增
+      logic-delete-field: deleted            # 逻辑删除字段
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# ---------------- Actuator（第19课时） ----------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,beans
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+# ---------------- 项目自定义配置 ----------------
+mall:
+  # 下单版本开关：课堂上一行配置切换 V1/V2/V3/V4，现场复现 BUG
+  # 1 = V1 无锁版本（必然超卖）
+  # 2 = V2 错误示范：@Transactional 方法上加 synchronized（仍然超卖）
+  # 3 = V3 正确单机锁：外层加锁 + 内层事务（单机可用）
+  # 4 = V4 Redis 分布式锁（集群可用）
+  order:
+    version: 1
+    lock-timeout: 10        # Redis 锁持有时长（秒）
+    lock-wait-millis: 3000  # 获取锁的最大自旋等待时间
+  upload:
+    path: ${user.dir}/upload/
+    url-prefix: /upload/
+  cache:
+    product-detail-ttl: 600 # 商品详情缓存秒数
+
+info:
+  app:
+    name: mall
+    version: 1.0.0
+    author: SpringBoot 电商实战课

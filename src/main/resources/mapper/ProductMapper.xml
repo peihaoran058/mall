@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mall.mapper.ProductMapper">
+
+    <!--
+        后台商品分页条件查询。
+        三个课堂要点：
+        1) 动态 SQL 用 <where> + <if>，不要用 where 1=1（可读性差、走不到索引优化）
+        2) like 必须用 concat('%', #{}, '%')，用 '${}' 会有 SQL 注入风险
+        3) 手写 SQL 不会自动加逻辑删除条件，必须自己写 p.deleted = 0
+    -->
+    <select id="selectAdminPage" resultType="com.example.mall.entity.Product">
+        select p.*,
+               c.name as category_name
+        from product p
+                 left join product_category c on c.id = p.category_id
+        <where>
+            p.deleted = 0
+            <if test="query.name != null and query.name != ''">
+                and p.name like concat('%', #{query.name}, '%')
+            </if>
+            <if test="query.categoryId != null">
+                and p.category_id = #{query.categoryId}
+            </if>
+            <if test="query.status != null">
+                and p.status = #{query.status}
+            </if>
+            <if test="query.minPrice != null">
+                and p.price &gt;= #{query.minPrice}
+            </if>
+            <if test="query.maxPrice != null">
+                and p.price &lt;= #{query.maxPrice}
+            </if>
+        </where>
+        order by p.sort asc, p.id desc
+    </select>
+
+</mapper>
