@@ -5,7 +5,9 @@ import com.example.mall.common.PageResult;
 import com.example.mall.common.Result;
 import com.example.mall.dto.OrderQueryDTO;
 import com.example.mall.dto.OrderSubmitDTO;
+import com.example.mall.dto.SeckillSubmitDTO;
 import com.example.mall.entity.Orders;
+import com.example.mall.mq.OrderMqService;
 import com.example.mall.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -38,7 +40,7 @@ import java.util.Map;
 public class OrderController {
 
     private final OrderService orderService;
-    //private final OrderMqService orderMqService;
+    private final OrderMqService orderMqService;
 
 
     @PostMapping("/submit")
@@ -94,13 +96,16 @@ public class OrderController {
      * 剩下的事都在队列里。<b>这就是"削峰"：把用户等待时间从"数据库处理完"
      * 变成"消息进队列"。</b></p>
      */
-    /*@PostMapping("/mq/submit")
+    @PostMapping("/mq/submit")
     public Result<Map<String, Object>> mqSubmit(@RequestAttribute(Constants.REQ_USER_ID) Long userId,
-                                               @RequestBody @Valid SeckillSubmitDTO dto) {
+                                                @RequestBody @Valid SeckillSubmitDTO dto) {
+        // 入口只做两件事：门禁（V8 的 Redis 预扣）+ 投递消息。
+        // 真正的下单在消费端，所以这里返回的 data 里<b>没有订单实体</b>，
+        // 只有 orderNo 和 status=QUEUING —— 调用方必须去轮询下面的结果接口。
         Map<String, Object> data = orderMqService.submit(userId, dto.getProductId(), dto.getQuantity(),
                 dto.getReceiverName(), dto.getReceiverPhone(), dto.getReceiverAddress(), dto.getRemark());
         return Result.success("已进入队列，正在排队下单", data);
-    }*/
+    }
 
     /**
      * 轮询秒杀下单结果。
@@ -110,9 +115,9 @@ public class OrderController {
      * 不要小看它 —— 很多项目上了 MQ 却忘了做结果回查，
      * 用户点完秒杀就一脸茫然，<b>体验比同步下单还差</b>。</p>
      */
-    /*@GetMapping("/mq/result/{orderNo}")
+    @GetMapping("/mq/result/{orderNo}")
     public Result<Map<String, Object>> mqResult(@RequestAttribute(Constants.REQ_USER_ID) Long userId,
-                                               @PathVariable String orderNo) {
+                                                @PathVariable String orderNo) {
         return Result.success(orderMqService.result(orderNo, userId));
-    }*/
+    }
 }

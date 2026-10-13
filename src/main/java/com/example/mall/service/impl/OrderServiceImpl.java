@@ -129,14 +129,8 @@ public class OrderServiceImpl implements OrderService {
         if (ordersPage.getTotal() == 0) {
             return PageResult.of(ordersPage);
         }
-        List<Long> collect = ordersPage.getRecords().stream().map(Orders::getId).collect(Collectors.toList());
-        List<OrderItem> orderItems = orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>().in(OrderItem::getOrderId, collect));
-        for (Orders orders : ordersPage.getRecords()) {
-            orders.setItems(orderItems.stream()
-                    .filter(item -> item.getOrderId().equals(orders.getId()))
-                    .collect(Collectors.toList()));
-        }
-        return PageResult.of(ordersPage);
+        Page<Orders> orderItems = getOrderItems(ordersPage);
+        return PageResult.of(orderItems);
     }
 
     @Override
@@ -156,6 +150,31 @@ public class OrderServiceImpl implements OrderService {
         // 状态机校验不做在查询里，而是直接放进 UPDATE 的条件：
         // 只有"待付款"的行能被改。并发下两个支付请求同时到达，
         // 数据库行锁保证只有一个 rows=1，天然防重复支付。
+
+        // 并发下的错误写法，判断订单状态，然后更新订单状态。
+        /*Orders orders = ordersMapper.selectOne(new LambdaQueryWrapper<Orders>()
+                .eq(Orders::getOrderNo, orderNo)
+                .eq(Orders::getUserId, userId));
+        if (orders == null) {
+            log.error("订单不存在");
+            throw new BusinessException(ResultCode.ORDER_NOT_EXISTS);
+        }*/
+
+
+        // 判断和更新之间存在时间窗口。两个线程可以同时通过判断教研，引发并发问题，这个叫做竞态条件。
+        /*if (Constants.PAY_STATUS_UNPAID.equals(orders.getPayStatus())) {
+            int rows = ordersMapper.update(null, new LambdaUpdateWrapper<Orders>()
+                    .set(Orders::getPayStatus, Constants.PAY_STATUS_PAID)
+                    .set(Orders::getOrderStatus, Constants.ORDER_STATUS_PAID)
+                    .set(Orders::getPayTime, LocalDateTime.now(ZoneId.of("Asia/Shanghai")))
+                    .eq(Orders::getOrderNo, orderNo)
+                    .eq(Orders::getUserId, userId));
+            if (rows == 0) {
+                // 没改到行 = 订单不存在 / 不是待付款状态（已支付或已取消）
+                throw new BusinessException(ResultCode.ORDER_STATUS_ERROR);
+            }
+        }*/
+        // 并发下正确写法，使用SQL 语句实现状态机
         int rows = ordersMapper.update(null, new LambdaUpdateWrapper<Orders>()
                 .set(Orders::getPayStatus, Constants.PAY_STATUS_PAID)
                 .set(Orders::getOrderStatus, Constants.ORDER_STATUS_PAID)
@@ -197,15 +216,16 @@ public class OrderServiceImpl implements OrderService {
         // 已支付的订单取消 = 退款：pay_status 由「已支付」转「已退款」。
         // 放在状态机校验之后读，拿到的就是取消这一刻的真实支付状态
         // （此时 orderStatus 已经是 4，pay() 不可能再把它改成已支付）。
-        Orders order = ordersMapper.selectOne(new LambdaQueryWrapper<Orders>()
+        int update = ordersMapper.update(null, new LambdaUpdateWrapper<Orders>()
+                .set(Orders::getPayStatus, Constants.PAY_STATUS_REFUND)
                 .eq(Orders::getOrderNo, orderNo)
-                .eq(Orders::getUserId, userId));
-        if (order != null && Constants.PAY_STATUS_PAID.equals(order.getPayStatus())) {
-            ordersMapper.update(null, new LambdaUpdateWrapper<Orders>()
-                    .set(Orders::getPayStatus, Constants.PAY_STATUS_REFUND)
-                    .eq(Orders::getOrderNo, orderNo)
-                    .eq(Orders::getUserId, userId));
+                .eq(Orders::getUserId, userId)
+                .eq(Orders::getPayStatus, Constants.PAY_STATUS_PAID));
+        if (update == 0){
+            // 没改到行 = 订单不存在 / 已退款
+            throw new BusinessException(ResultCode.ORDER_STATUS_ERROR);
         }
+
 
         // 回滚库存和销量：和改状态在同一个事务里，
         // 不能出现"状态改了库存没滚"或"库存滚了状态没改"这种半成品
@@ -224,5 +244,47 @@ public class OrderServiceImpl implements OrderService {
         }
         // 注意：订单明细不删。这是下单时的商品快照，取消后详情页还要展示
         // "当时买了什么、多少钱"，删了详情页就空了
+    }
+
+    @Override
+    public PageResult<Orders> adminPage(OrderQueryDTO query) {
+        Page<Orders> page = new Page<>(query.getPageNum(), query.getPageSize());
+        Page<Orders> ordersPage = ordersMapper.selectPageList(page,query );
+        if (ordersPage.getRecords().size() == 0 ){
+            return PageResult.of(ordersPage);
+        }
+        Page<Orders> orderItems = getOrderItems(ordersPage);
+        return PageResult.of(orderItems);
+    }
+
+
+    @Override
+    public Orders adminDetail(String orderNo) {
+        Orders order = ordersMapper.selectBYOrderNo(orderNo);
+        List<OrderItem> orderItems = orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, order.getId()));
+        order.setItems(orderItems);
+        return order;
+    }
+
+    @Override
+    public void adminUpdateStatus(String orderNo, Integer orderStatus) {
+        int rows = ordersMapper.update(null, new LambdaUpdateWrapper<Orders>()
+                .set(Orders::getOrderStatus, orderStatus)
+                .eq(Orders::getOrderNo, orderNo));
+        if (rows == 0) {
+            throw new BusinessException(ResultCode.ORDER_STATUS_ERROR);
+        }
+
+    }
+
+    private Page<Orders> getOrderItems(Page<Orders> ordersPage) {
+        List<Long> collect = ordersPage.getRecords().stream().map(Orders::getId).collect(Collectors.toList());
+        List<OrderItem> orderItems = orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>().in(OrderItem::getOrderId, collect));
+        for (Orders orders : ordersPage.getRecords()) {
+            orders.setItems(orderItems.stream()
+                    .filter(item -> item.getOrderId().equals(orders.getId()))
+                    .collect(Collectors.toList()));
+        }
+        return ordersPage;
     }
 }

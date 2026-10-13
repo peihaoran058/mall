@@ -26,9 +26,3 @@ logs/
 ### OS ###
 .DS_Store
 Thumbs.db
-
-### 我的调试临时文件（可删）###
-_probe*.js
-_ext*.js
-_srcref/
-

@@ -1,20 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.example.mall.common.PageResult
- *  com.example.mall.common.Result
- *  com.example.mall.controller.admin.AdminOrderController
- *  com.example.mall.dto.OrderQueryDTO
- *  com.example.mall.entity.Orders
- *  com.example.mall.service.OrderService
- *  org.springframework.web.bind.annotation.GetMapping
- *  org.springframework.web.bind.annotation.PathVariable
- *  org.springframework.web.bind.annotation.PutMapping
- *  org.springframework.web.bind.annotation.RequestMapping
- *  org.springframework.web.bind.annotation.RequestParam
- *  org.springframework.web.bind.annotation.RestController
- */
 package com.example.mall.controller.admin;
 
 import com.example.mall.common.PageResult;
@@ -22,36 +5,35 @@ import com.example.mall.common.Result;
 import com.example.mall.dto.OrderQueryDTO;
 import com.example.mall.entity.Orders;
 import com.example.mall.service.OrderService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
 
+/**
+ * 后台订单管理（第18课时）。
+ */
 @RestController
-@RequestMapping(value={"/api/admin/order"})
+@RequestMapping("/api/admin/order")
+@RequiredArgsConstructor
 public class AdminOrderController {
+
     private final OrderService orderService;
 
-    @GetMapping(value={"/page"})
+    /** 全部订单分页（可按状态、订单号筛选） */
+    @GetMapping("/page")
     public Result<PageResult<Orders>> page(OrderQueryDTO query) {
-        return Result.success(this.orderService.adminPage(query));
+        return Result.success(orderService.adminPage(query));
     }
 
-    @GetMapping(value={"/{orderNo}"})
+    /** 订单详情 */
+    @GetMapping("/{orderNo}")
     public Result<Orders> detail(@PathVariable String orderNo) {
-        return Result.success(this.orderService.adminDetail(orderNo));
+        return Result.success(orderService.adminDetail(orderNo));
     }
 
-    @PutMapping(value={"/{orderNo}/status"})
+    /** 修改订单状态：1 待发货 → 2 已发货 → 3 已完成 */
+    @PutMapping("/{orderNo}/status")
     public Result<Void> updateStatus(@PathVariable String orderNo, @RequestParam Integer orderStatus) {
-        this.orderService.adminUpdateStatus(orderNo, orderStatus);
-        return Result.success((String)"\u64cd\u4f5c\u6210\u529f", null);
-    }
-
-    public AdminOrderController(OrderService orderService) {
-        this.orderService = orderService;
+        orderService.adminUpdateStatus(orderNo, orderStatus);
+        return Result.success("操作成功", null);
     }
 }
-

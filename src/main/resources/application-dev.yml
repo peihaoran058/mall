@@ -6,7 +6,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/mall?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
     username: root
-    password: 123456
+    password: peihaoran050808
     # HikariCP 连接池（笔记 5.1）
     hikari:
       pool-name: MallHikariPool
@@ -18,7 +18,7 @@ spring:
       connection-test-query: SELECT 1
 
   redis:
-    host: localhost
+    host: 127.0.0.1
     port: 6379
     password: 123456
     database: 0
@@ -29,6 +29,16 @@ spring:
         max-idle: 8
         min-idle: 2
         max-wait: 3000ms
+
+  # 本机默认安装的 RabbitMQ（guest 账号只能从本机登录，正是开发环境）
+  # 管理台 http://localhost:15672 ；改了账号密码就改这里
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    connection-timeout: 5000ms
 
 # 开发环境打印 SQL，方便课堂上看到"第一次查库、第二次查缓存"
 mybatis-plus:
@@ -43,5 +53,5 @@ logging:
 
 mall:
   upload:
-    path: D:/dev/work/mall/upload/
+    path: C:/Users/裴浩然/桌面/实训/work/mall/upload/
     url-prefix: http://localhost:8080/upload/

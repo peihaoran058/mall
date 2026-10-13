@@ -61,6 +61,18 @@
             <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
 
+        <!-- RabbitMQ：第20课时 秒杀异步下单（削峰填谷 + 幂等 + 原子扣减兜底） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
+        <!-- 消费失败重试（spring-rabbit 的 retry 支持是 optional 依赖，不显式引入不生效） -->
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
+
         <!-- Actuator：第19课时监控端点 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

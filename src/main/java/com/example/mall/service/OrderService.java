@@ -19,4 +19,10 @@ public interface OrderService {
     void pay(Long userId, String orderNo);
 
     void cancel(Long userId, String orderNo);
+
+    PageResult<Orders> adminPage(OrderQueryDTO query);
+
+    Orders adminDetail(String orderNo);
+
+    void adminUpdateStatus(String orderNo, Integer orderStatus);
 }

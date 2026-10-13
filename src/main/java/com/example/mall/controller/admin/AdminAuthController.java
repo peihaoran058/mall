@@ -26,9 +26,5 @@ public class AdminAuthController {
         return Result.success("管理员登录成功",adminService.login(dto));
     }
 
-    @GetMapping("/hello")
-    public Result<String> hello(){
-        return Result.success("哈哈哈");
-    }
 
 }

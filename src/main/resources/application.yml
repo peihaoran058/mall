@@ -25,6 +25,32 @@ spring:
     pathmatch:
       matching-strategy: ant_path_matcher   # SpringBoot2.7 兼容写法，避免路径匹配报错
 
+  # ---------------- RabbitMQ（第20课时：秒杀异步下单） ----------------
+  # 连接信息（host/port/账号）按环境给，见 application-dev.yml / application-prod.yml。
+  # 这里放"所有环境一致"的消费行为。并发/预取放在 mall.mq.* 里（同一个值既驱动
+  # 监听容器、又给前端实验台展示，避免两处写重复）。
+  rabbitmq:
+    listener:
+      simple:
+        acknowledge-mode: auto
+        # 消费并发/预取：直接引用 mall.mq.* 的值，保证"驱动监听容器的值"
+        # 和"前端实验台展示的值"永远是同一个 —— 两处各写一份，
+        # 改了一处忘了另一处，学生看到的并发数就是假的。
+        concurrency: ${mall.mq.consumer-concurrency}
+        max-concurrency: ${mall.mq.consumer-max-concurrency}
+        prefetch: ${mall.mq.prefetch}
+        # 重试耗尽后【不】重回队列，否则业务性失败的消息会被无限重投、日志刷屏；
+        # 设为 false 后消息进死信队列，人工排查 —— 生产环境的正确姿势。
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 200ms
+          multiplier: 2
+          max-interval: 2000ms
+    publisher-confirm-type: correlated   # 发送方确认：消息有没有到达交换机
+    publisher-returns: true              # 路由不到队列时退回（mandatory 在 RabbitMqConfig 里设）
+
 # ---------------- MyBatis-Plus ----------------
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -55,15 +81,48 @@ management:
 
 # ---------------- 项目自定义配置 ----------------
 mall:
-  # 下单版本开关：课堂上一行配置切换 V1/V2/V3/V4，现场复现 BUG
-  # 1 = V1 无锁版本（必然超卖）
-  # 2 = V2 错误示范：@Transactional 方法上加 synchronized（仍然超卖）
-  # 3 = V3 正确单机锁：外层加锁 + 内层事务（单机可用）
-  # 4 = V4 Redis 分布式锁（集群可用）
+  # ┌──────────────────────────────────────────────────────────────────┐
+  # │ 本项目有三套互不干扰的"版本开关"，课堂上可以同时存在、分别演示：      │
+  # │   mall.order.version     1~5   并发超卖专题（第 13~16 课时）        │
+  # │   mall.order.tx-version  1~5   事务失效专题（第 10~11 课时）        │
+  # │   mall.mq.mode           6~8   秒杀异步下单（第 20 课时）★下面这个   │
+  # └──────────────────────────────────────────────────────────────────┘
   order:
     version: 1
     lock-timeout: 10        # Redis 锁持有时长（秒）
     lock-wait-millis: 3000  # 获取锁的最大自旋等待时间
+  # 第20课时：秒杀异步下单（RabbitMQ）
+  mq:
+    # 消费端版本（同时决定"秒杀入口"要不要先做 Redis 预扣）：
+    # 6 = 只有 MQ：入口直接投递，消费端"读库存 → Java 判断 → 无条件扣减"，并发消费时依然超卖
+    #     （用来证明：MQ 解决的是削峰，不解决超卖）
+    # 7 = MQ + Redis 幂等 + 数据库原子扣减：不超卖，但瞬时请求还是会全量投进队列
+    # 8 = 最终版：Redis Lua 预扣库存 + MQ 异步落库 + 数据库兜底
+    #     入口先用 Lua 原子预扣把绝大多数请求挡在 Redis（不占 DB 连接、不发消息），
+    #     只有抢到名额的才投 MQ；消费端落库时仍用带条件的 UPDATE 兜底，DB 拦下就回补 Redis。
+    mode: 7
+    # ---- 拓扑（交换机 / 队列名集中在这里，别散在代码里硬编码） ----
+    # 注意：改这几个名字会新建一套队列，RabbitMQ 里旧的队列不会自动消失，
+    #      课堂上换名演示完记得去管理台（15672）把旧队列删掉，否则看板会出现两套。
+    order-exchange: mall.order.exchange
+    order-queue: mall.order.queue
+    order-routing-key: mall.order.submit
+    dlx-exchange: mall.order.dead.exchange
+    dlq-queue: mall.order.dead.queue
+    dlq-routing-key: mall.order.dead
+    # ---- 消费行为（同一个值既驱动监听容器，又给前端实验台展示） ----
+    consumer-concurrency: 3          # 消费者最小线程数
+    consumer-max-concurrency: 10     # 积压时自动扩容到的上限 —— 削峰填谷的关键
+    prefetch: 1                      # 每次只取 1 条：消费者能力不足时消息留在队列排队，不堆内存
+    # ---- 教学参数 ----
+    message-ttl: 600000              # 队列消息 TTL（毫秒）：堆积过久自动进死信，避免无限积压
+    race-window-millis: 30           # V6 专用竞态窗口（毫秒）：本地 MySQL 太快，不给窗口就压不出超卖
+    result-ttl-seconds: 600          # 秒杀结果缓存（前端轮询用）保留时长
+    idempotent-ttl-seconds: 600      # 消息幂等键（Redis SETNX）保留时长
+    flood-timeout-millis: 30000      # 洪峰实验等待"队列吃干净"的最长时间
+  # 秒杀库存（Redis 侧缓存的是 DB 库存的副本，key 命名集中管）
+  stock:
+    key-prefix: 'mall:stock:product:'
   upload:
     path: ${user.dir}/upload/
     url-prefix: /upload/

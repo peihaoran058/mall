@@ -3,9 +3,19 @@ package com.example.mall.controller;
 import com.example.mall.common.Result;
 import com.example.mall.common.ResultCode;
 import com.example.mall.config.MallProperties;
+import com.example.mall.dto.OversellPressureDTO;
 import com.example.mall.exception.BusinessException;
+import com.example.mall.order.oversell.OversellDataService;
+import com.example.mall.order.oversell.OversellPressureService;
+import com.example.mall.order.oversell.OrderOversellService;
+import com.example.mall.order.oversell.OversellSupport;
 import com.example.mall.order.tx.OrderTxExperimentService;
 import com.example.mall.order.tx.OrderTxSubmitService;
+import com.example.mall.mq.MqExperimentService;
+import com.example.mall.mq.MqModeService;
+import com.example.mall.mq.MqStatusService;
+import com.example.mall.mq.OrderMqService;
+import com.example.mall.mq.v8.StockRedisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +43,16 @@ public class DemoController {
     private final OrderTxSubmitService orderTxSubmitService;
     private final OrderTxExperimentService orderTxExperimentService;
     private final MallProperties mallProperties;
+    private final OrderOversellService orderOversellService;
+    private final OversellDataService oversellDataService;
+    private final OversellPressureService oversellPressureService;
+
+    /* ---- 第20课时：秒杀异步下单（RabbitMQ） ---- */
+    private final MqModeService mqModeService;
+    private final MqStatusService mqStatusService;
+    private final MqExperimentService mqExperimentService;
+    private final OrderMqService orderMqService;
+    private final StockRedisService stockRedisService;
 
     /* ==================================================================
      * 一、统一返回 & 全局异常（第2课时）
@@ -182,6 +202,154 @@ public class DemoController {
                 + ((Number) data.getOrDefault("cartRows", 0)).intValue();
         log.info("【课堂实验】清理事务实验数据 | userId={} | {}", userId, data);
         return Result.success("已清理", total);
+    }
+
+    /* ==================================================================
+     * 三、并发超卖实验（第 13~16 课时）
+     * ------------------------------------------------------------------
+     * 前端演示台（mall-web /admin/demo 的"并发超卖"页签）依赖的一组接口。
+     * 压测由后端线程池 + CountDownLatch 真并发发起（见 OversellPressureService），
+     * 不再依赖 Node 网关；版本切换走运行期覆盖，不用改 yml 重启。
+     * ================================================================== */
+
+    /**
+     * 查看当前下单版本（V1~V5）：运行期覆盖值优先，其次 yml
+     */
+    @GetMapping("/order/version")
+    public Result<Map<String, Object>> orderVersion() {
+        return Result.success(orderOversellService.status());
+    }
+
+    /**
+     * 热切换下单版本：value = 1~5（V1 无锁 / V2 事务内锁 / V3 单机锁 /
+     * V4 Redis 锁 / V5 原子扣减） / 0（清除覆盖，回到 yml 配置）。
+     * <p>课堂上切完版本立刻压下一轮，超卖 → 修复全程不用重启。</p>
+     */
+    @PostMapping("/order/version")
+    public Result<Map<String, Object>> setOrderVersion(@RequestParam(defaultValue = "0") Integer value) {
+        return Result.success(orderOversellService.setVersion(value));
+    }
+
+    /** 查看商品库存概况（含 oversell 判定，前端库存看板直接渲染） */
+    @GetMapping("/stock")
+    public Result<Map<String, Object>> stock(@RequestParam(defaultValue = "1") Long productId) {
+        return Result.success(oversellDataService.stockInfo(productId));
+    }
+
+    /** 重置库存（销量一并清零）：每一轮压测前恢复现场用 */
+    @PostMapping("/stock/reset")
+    public Result<Map<String, Object>> resetStock(@RequestParam(defaultValue = "1") Long productId,
+                                                  @RequestParam(defaultValue = "10") Integer stock) {
+        return Result.success("库存已重置", oversellDataService.resetStock(productId, stock));
+    }
+
+    /**
+     * 清理压测订单（只删 remark = loadtest 的订单，不碰真实订单）。
+     * <p>⚠️ data 是 {orderRows, itemRows}，前端会拆开拼提示文案。</p>
+     */
+    @PostMapping("/orders/clean")
+    public Result<Map<String, Object>> cleanOrders() {
+        return Result.success("已清理", oversellDataService.cleanOrders());
+    }
+
+    /**
+     * 并发压测：重置库存 → 清理订单 → N 个线程同时下单 → 读回库存判定。
+     * <p>替代老版 Node 网关的 /bff/pressure-test，浏览器并发上限是 6 压不出效果，
+     * 服务端线程池才是真并发（压测代码本身也是第 13 课时的并发教材）。</p>
+     */
+    @PostMapping("/pressure/run")
+    public Result<Map<String, Object>> pressureRun(@RequestBody OversellPressureDTO dto) {
+        return Result.success("压测完成", oversellPressureService.run(dto));
+    }
+
+    /* ==================================================================
+     * 四、秒杀异步下单实验（第 20 课时 · RabbitMQ）
+     * ------------------------------------------------------------------
+     * 前端 MQ 实验台（mall-web /admin/mq）依赖的一组接口。
+     * 和上面"并发超卖"那一组的区别：
+     *   · 那里压的是 mall.order.version（1~5），链路是"接口里直接扣库存"；
+     *   · 这里压的是 mall.mq.mode（6~8），链路是"Redis 预扣 → MQ 排队 → 消费者异步落库"。
+     * 两套开关互不干扰，可以同时存在。
+     * ================================================================== */
+
+    /**
+     * MQ 运行状态看板：连接 / 拓扑 / 队列积压 / 在线消费者 / 生产消费计数器 / 当前版本。
+     * <p>课堂上压完一轮刷新它，能看到队列积压从几十掉到 0 —— 这就是削峰填谷。</p>
+     */
+    @GetMapping("/mq/status")
+    public Result<Map<String, Object>> mqStatus() {
+        return Result.success(mqStatusService.status());
+    }
+
+    /**
+     * 热切换消费端版本：value = 6（只有 MQ，会超卖） / 7（幂等 + 原子扣减） /
+     * 8（最终版：Redis Lua 预扣 + MQ + DB 兜底） / 0（清除覆盖，回到 yml）。
+     *
+     * <p>注意这里既影响<b>消费端</b>（怎么落库），也影响<b>入口</b>
+     * （V8 才会先做 Redis 预扣）—— 因为 V7 和 V8 的差别本来就只在入口。
+     * 切完不用重启，下一轮洪峰实验立刻按新版本跑。</p>
+     */
+    @PostMapping("/mq/mode")
+    public Result<Map<String, Object>> mqMode(@RequestParam(defaultValue = "0") Integer value) {
+        return Result.success(mqModeService.set(value));
+    }
+
+    /**
+     * 手工投递一条消息（不用登录，方便课堂上只看"一条"的完整链路）。
+     *
+     * <p>想观察 <b>V7/V8 的幂等拦截</b>怎么做？不用改代码：
+     * 去 RabbitMQ 管理台（{@code http://localhost:15672} → Queues →
+     * {@code mall.order.queue} → Get messages）把同一条消息重新投一次，
+     * 就能看到"幂等拦截 +1"。</p>
+     */
+    @PostMapping("/mq/submit")
+    public Result<Map<String, Object>> mqSubmit(@RequestParam(defaultValue = "1") Long productId,
+                                                @RequestParam(defaultValue = "1") Integer quantity,
+                                                @RequestParam(defaultValue = "2001") Long userId) {
+        Map<String, Object> data = orderMqService.submit(userId, productId, quantity,
+                "MQ 实验手工下单", "13800000000", "实验地址（手工投递）",
+                OversellSupport.LOADTEST_REMARK);
+        return Result.success("已投递一条消息", data);
+    }
+
+    /**
+     * 一键洪峰：重置库存 → 并发投递 N 条消息 → 等消费完 → 判定有没有超卖。
+     * <p>返回体里带了 {@code steps}（实验步骤）和 {@code logs}（消费流水），
+     * 前端实验台直接展开给学生看。</p>
+     */
+    @PostMapping("/mq/flood")
+    public Result<Map<String, Object>> mqFlood(@RequestParam(required = false) Long productId,
+                                               @RequestParam(defaultValue = "10") Integer stock,
+                                               @RequestParam(defaultValue = "20") Integer count) {
+        return Result.success("洪峰实验完成", mqExperimentService.flood(productId, stock, count));
+    }
+
+    /** 清空业务队列 + 死信队列，并把计数器、结果缓存归零（每轮实验前恢复现场） */
+    @PostMapping("/mq/purge")
+    public Result<Map<String, Object>> mqPurge() {
+        return Result.success("已清空", mqStatusService.purge());
+    }
+
+    /**
+     * 把数据库库存预热进 Redis（V8 的入口门禁依赖它）。
+     *
+     * <p>为什么需要显式预热？因为 Redis 里的库存是 DB 库存的<b>副本</b>。
+     * 副本不存在时，V8 的 Lua 脚本会返回 -2（未预热）并<b>拒绝下单</b> ——
+     * 这是故意的：缓存数据没准备好属于故障，绝不能降级成"卖完了"，
+     * 否则 Redis 数据丢了一整天都没人知道。</p>
+     */
+    @PostMapping("/stock/warmup")
+    public Result<Map<String, Object>> stockWarmup(@RequestParam(defaultValue = "1") Long productId,
+                                                   @RequestParam(required = false) Integer stock) {
+        Map<String, Object> info = oversellDataService.stockInfo(productId);
+        int target = stock == null ? ((Number) info.get("stock")).intValue() : stock;
+        stockRedisService.warmup(productId, target);
+
+        Map<String, Object> data = new HashMap<>(8);
+        data.putAll(info);
+        data.put("redisKey", stockRedisService.stockKey(productId));
+        data.put("redisStock", stockRedisService.getStock(productId));
+        return Result.success("已预热 Redis 库存：" + stockRedisService.stockKey(productId) + " = " + target, data);
     }
 
 }
