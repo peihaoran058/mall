@@ -78,7 +78,7 @@ public interface Constants {
     Integer PAY_STATUS_PAID = 1;
     Integer PAY_STATUS_REFUND = 2;
 
-    /** 订单状态：待付款 / 待发货 / 已发货 / 已完成 / 已取消 */
+        /** 订单状态：待付款 / 待发货 / 已发货 / 已完成 / 已取消 */
     Integer ORDER_STATUS_UNPAID = 0;
     Integer ORDER_STATUS_PAID = 1;
     Integer ORDER_STATUS_SENT = 2;

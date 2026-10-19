@@ -54,7 +54,7 @@ public class MallProperties {
          * 但如果本地 MySQL 太快、压测没复现出超卖，把它调成 5~10 就能稳定复现。
          * 演示完记得调回 0。</p>
          */
-        private Long raceWindowMillis = 0L;
+        private Long raceWindowMillis = 10L;
     }
 
     /**

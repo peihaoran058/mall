@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mall.mapper.OrdersMapper">
+
+    <select id="selectPageList"  resultType="com.example.mall.entity.Orders">
+        select * from  orders
+        where  1=1
+            <if test="query.orderNo != null and query.orderNo != 0">
+                and order_no = concat('%',#{query.orderNo},'%')
+            </if>
+            <if test="query.orderStatus != null and query.orderStatus != 0">
+                and order_status = #{query.orderStatus}
+            </if>
+            <if test="query.payStatus != null and query.payStatus != 0">
+                and pay_status = #{query.payStatus}
+            </if>
+    </select>
+
+</mapper>

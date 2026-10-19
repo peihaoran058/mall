@@ -61,6 +61,7 @@ public enum ResultCode {
     ORDER_STATUS_ERROR(4002, "当前订单状态不允许该操作"),
     ORDER_NO_PERMISSION(4003, "无权操作他人的订单"),
     ORDER_REPEAT_SUBMIT(4004, "请勿重复提交订单"),
+    ORDER_LOG_ERROR(4005, "订单日志创建失败"),
 
     /* ---------- 文件与公共 50xx ---------- */
     FILE_UPLOAD_ERROR(5001, "文件上传失败"),

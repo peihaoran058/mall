@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mall.mapper.ShoppingCartMapper">
+
+    <select id="selectCartListByUserId" resultType="com.example.mall.vo.CartItemVO">
+        SELECT sc.id cart_id,
+               sc.user_id,
+               sc.product_id,
+               sc.quantity,
+               sc.selected,
+               p.`name` product_name,
+               p.cover product_cover,
+               p.price,
+               p.stock,
+               p.`status` product_status
+        FROM  shopping_cart sc
+                  left join product p on  sc.product_id = p.id
+        where p.deleted = 0
+              and sc.user_id = #{userId}
+    </select>
+
+    <select id="selectStock"  resultType="com.example.mall.vo.CartItemVO">
+        select sc.product_id,p.stock,p.name product_name from  shopping_cart sc,product p
+        where sc.product_id = p.id and  p.deleted = 0 and sc.id = #{cartId}
+    </select>
+
+    <select id="selectProductListByUserId" resultType="java.lang.Long">
+        select  product_id from  shopping_cart
+        where  selected = 1  and  user_id = #{userId}
+    </select>
+
+
+    <delete id="deleteBatchByIds">
+        delete  from shopping_cart where id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        and user_id = #{userId}
+    </delete>
+</mapper>

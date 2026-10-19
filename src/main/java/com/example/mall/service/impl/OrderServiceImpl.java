@@ -18,6 +18,7 @@ import com.example.mall.mapper.OrdersMapper;
 import com.example.mall.mapper.ProductMapper;
 import com.example.mall.mapper.ShoppingCartMapper;
 import com.example.mall.service.OrderService;
+import com.example.mall.service.OrdersLogService;
 import com.example.mall.util.OrderNoUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +47,9 @@ public class OrderServiceImpl implements OrderService {
     @Autowired
     private OrderItemMapper orderItemMapper;
 
+    @Autowired
+    private OrdersLogService ordersLogService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Orders submit(Long userId, OrderSubmitDTO dto) {
@@ -63,11 +67,15 @@ public class OrderServiceImpl implements OrderService {
         Long orderId = OrderNoUtil.snowflakeLike();
         String orderNo = OrderNoUtil.timeRandom();
         // 2.查询要购买商品的库存
-        List<Product> products = productMapper.selectList(new LambdaQueryWrapper<Product>().in(Product::getId, productIdQuantityMap.keySet()));
+        List<Product> products = productMapper.selectList(new LambdaQueryWrapper<Product>()
+                .in(Product::getId, productIdQuantityMap.keySet()));
         if (!(products.size() >0)){
             log.error("无商品");
             throw new BusinessException(ResultCode.PRODUCT_NOT_EXISTS);
         }
+
+
+
         products = products.stream().sorted(Comparator.comparing(Product::getId)).collect(Collectors.toList());
         BigDecimal orderTotalAmount = new BigDecimal(0);
         for (Product product : products) {
@@ -100,6 +108,9 @@ public class OrderServiceImpl implements OrderService {
             orderItem.setTotalAmount(multiply);
             orderItemMapper.insert(orderItem);
         }
+        // 异步插入订单日志
+        ordersLogService.insertOrderLog(orderNo);
+
         // 6.创建订单
         Orders orders = new Orders();
         orders.setId(orderId);
@@ -116,6 +127,9 @@ public class OrderServiceImpl implements OrderService {
         ordersMapper.insert(orders);
         // 7.删除购物车
         cartMapper.deleteBatchByIds(cartsIdS, userId);
+
+        // 8.订单日志表插入一条记录
+
 
         return orders;
     }

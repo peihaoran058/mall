@@ -18,4 +18,46 @@
             </if>
     </select>
 
+    <select id="selectOrderStatusDist"  resultType="com.example.mall.vo.ChartItem">
+        SELECT
+            t.name AS name,
+            IFNULL(o.counts,0) AS value
+        FROM (
+                 SELECT 0 status, '待付款' name UNION ALL
+                 SELECT 1, '待发货' UNION ALL
+                 SELECT 2, '已发货' UNION ALL
+                 SELECT 3, '已完成' UNION ALL
+                 SELECT 4, '已取消'
+             ) t
+                 LEFT JOIN (
+            SELECT order_status,count(order_status) counts
+            from orders
+            where deleted = 0
+            GROUP BY order_status
+        ) o ON t.status = o.order_status
+        ORDER BY t.status
+    </select>
+
+    <select id="selectOrderTrend"  resultType="com.example.mall.vo.ChartItem">
+        SELECT
+            t.day AS name,
+            IFNULL(o.cnt, 0) AS value
+        FROM (
+            SELECT CURDATE() - INTERVAL 6 DAY AS day UNION ALL
+            SELECT CURDATE() - INTERVAL 5 DAY UNION ALL
+            SELECT CURDATE() - INTERVAL 4 DAY UNION ALL
+            SELECT CURDATE() - INTERVAL 3 DAY UNION ALL
+            SELECT CURDATE() - INTERVAL 2 DAY UNION ALL
+            SELECT CURDATE() - INTERVAL 1 DAY UNION ALL
+            SELECT CURDATE()
+            ) t
+            LEFT JOIN (
+            SELECT DATE(create_time) AS create_day, COUNT(*) AS cnt
+            FROM orders
+            WHERE deleted = 0
+            GROUP BY DATE(create_time)
+            ) o ON t.day = o.create_day
+        ORDER BY t.day;
+    </select>
+
 </mapper>

@@ -5,6 +5,7 @@ import com.example.mall.common.ResultCode;
 import com.example.mall.config.MallProperties;
 import com.example.mall.dto.OversellPressureDTO;
 import com.example.mall.exception.BusinessException;
+import com.example.mall.order.OrderAsyncService;
 import com.example.mall.order.oversell.OversellDataService;
 import com.example.mall.order.oversell.OversellPressureService;
 import com.example.mall.order.oversell.OrderOversellService;
@@ -46,6 +47,7 @@ public class DemoController {
     private final OrderOversellService orderOversellService;
     private final OversellDataService oversellDataService;
     private final OversellPressureService oversellPressureService;
+    private final OrderAsyncService orderAsyncService;
 
     /* ---- 第20课时：秒杀异步下单（RabbitMQ） ---- */
     private final MqModeService mqModeService;
@@ -352,4 +354,17 @@ public class DemoController {
         return Result.success("已预热 Redis 库存：" + stockRedisService.stockKey(productId) + " = " + target, data);
     }
 
+    /** 通过注入的 Bean 调用 → 异步生效，日志线程名为 mall-async-x */
+    @GetMapping("/async/ok")
+    public Result<String> asyncOk(@RequestParam String orderNo) {
+        orderAsyncService.asyncRecordLog(orderNo, "通过注入的 Bean 调用，@Async 应当生效");
+        return Result.success("已提交异步任务，请看控制台线程名（应为 mall-async-*）");
+    }
+
+    /** 同类 this 调用 → 异步失效，日志线程名为 http-nio-8080-exec-x */
+    @GetMapping("/async/fail")
+    public Result<String> asyncFail(@RequestParam String orderNo) {
+        orderAsyncService.selfInvocationDemo(orderNo);
+        return Result.success("已执行，请看控制台线程名（会是 http-nio-*，说明异步失效）");
+    }
 }

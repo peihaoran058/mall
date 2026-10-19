@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.example.mall.dto.ProductQueryDTO;
 import com.example.mall.entity.Product;
+import com.example.mall.vo.ChartItem;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -64,4 +65,7 @@ public interface ProductMapper extends BaseMapper<Product> {
      */
     @Update("update product set stock = stock - #{quantity}, sales = sales + #{quantity} where id = #{productId}")
     int deductStockWithoutCheck(@Param("productId") Long productId, @Param("quantity") Integer quantity);
+
+    List<ChartItem> selectTopProducts();
+
 }

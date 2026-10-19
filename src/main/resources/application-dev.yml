@@ -6,7 +6,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/mall?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
     username: root
-    password: peihaoran050808
+    password: 123456
     # HikariCP 连接池（笔记 5.1）
     hikari:
       pool-name: MallHikariPool
@@ -18,7 +18,7 @@ spring:
       connection-test-query: SELECT 1
 
   redis:
-    host: 127.0.0.1
+    host: localhost
     port: 6379
     password: 123456
     database: 0
@@ -53,5 +53,5 @@ logging:
 
 mall:
   upload:
-    path: C:/Users/裴浩然/桌面/实训/work/mall/upload/
+    path: D:/dev/work/mall/upload/
     url-prefix: http://localhost:8080/upload/

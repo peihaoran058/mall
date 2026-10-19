@@ -1,53 +1,90 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.example.mall.entity.OrderLog
- *  com.example.mall.mapper.OrderLogMapper
- *  com.example.mall.order.OrderAsyncService
- *  org.slf4j.Logger
- *  org.slf4j.LoggerFactory
- *  org.springframework.scheduling.annotation.Async
- *  org.springframework.stereotype.Service
- */
 package com.example.mall.order;
 
 import com.example.mall.entity.OrderLog;
 import com.example.mall.mapper.OrderLogMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+/**
+ * 订单异步服务（第15课时）。
+ *
+ * <p><b>业务场景：</b>下单成功后要记日志、发短信、加积分。
+ * 这些操作和"下单成功"这个结果无关，不该让用户等着，
+ * 所以丢到异步线程池里去做，接口响应时间立刻下降。</p>
+ *
+ * <p><b>代价（必须讲清楚）：</b></p>
+ * <ul>
+ *     <li>异步方法抛异常，主线程<b>感知不到</b>，需要自己 try-catch + 告警，
+ *         否则任务静默丢失</li>
+ *     <li>异步任务<b>不在主线程事务里</b>：主线程事务回滚了，异步任务照样执行</li>
+ *     <li>服务重启时队列里的任务可能丢失，重要任务要走 MQ + 落库重试</li>
+ * </ul>
+ */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class OrderAsyncService {
-    private static final Logger log = LoggerFactory.getLogger(OrderAsyncService.class);
+
     private final OrderLogMapper orderLogMapper;
 
-    @Async(value="mallExecutor")
+    /**
+     * 异步写入订单日志。
+     *
+     * <p><b>@Async 生效的三个前提（缺一不可）：</b></p>
+     * <ol>
+     *     <li>启动类或配置类上有 {@code @EnableAsync}</li>
+     *     <li>方法必须是 <b>public</b>，且只能通过<b>注入的 Bean</b> 调用（同类自调用无效）</li>
+     *     <li>返回值只能是 {@code void} 或 {@code Future}，返回其他类型拿不到异步结果</li>
+     * </ol>
+     *
+     * <p>{@code @Async("mallExecutor")} 指定线程池名。不写名字的话会用 Spring 默认的
+     * {@code SimpleAsyncTaskExecutor} —— 每个任务新建一个线程，高并发下线程数爆炸。</p>
+     */
+    @Async("mallExecutor")
     public void asyncRecordLog(String orderNo, String content) {
         try {
-            log.info("\u3010\u5f02\u6b65\u7ebf\u7a0b\u3011\u5f00\u59cb\u5199\u8ba2\u5355\u65e5\u5fd7 | orderNo={} | thread={}", (Object)orderNo, (Object)Thread.currentThread().getName());
+            // 打印线程名，课堂上和 http-nio-8080-exec-x 对比，一眼看出异步是否生效
+            log.info("【异步线程】开始写订单日志 | orderNo={} | thread={}",
+                    orderNo, Thread.currentThread().getName());
+
             OrderLog orderLog = new OrderLog();
             orderLog.setOrderNo(orderNo);
             orderLog.setContent(content);
             orderLog.setThreadName(Thread.currentThread().getName());
-            this.orderLogMapper.insert(orderLog);
-            log.info("\u3010\u5f02\u6b65\u7ebf\u7a0b\u3011\u8ba2\u5355\u65e5\u5fd7\u5199\u5165\u5b8c\u6210 | orderNo={}", (Object)orderNo);
-        }
-        catch (Exception e) {
-            log.error("\u3010\u5f02\u6b65\u7ebf\u7a0b\u3011\u5199\u8ba2\u5355\u65e5\u5fd7\u5931\u8d25 | orderNo={}", (Object)orderNo, (Object)e);
+            orderLogMapper.insert(orderLog);
+
+            log.info("【异步线程】订单日志写入完成 | orderNo={}", orderNo);
+        } catch (Exception e) {
+            // ★ 异步方法一定要自己兜住异常：否则异常只在日志里一闪而过，
+            //   主流程完全不知道日志没写成功。
+            log.error("【异步线程】写订单日志失败 | orderNo={}", orderNo, e);
         }
     }
 
+    /**
+     * 【错误示范】同类内部自调用 —— @Async 直接失效。
+     *
+     * <p>这里 {@code this.asyncRecordLog(...)} 走的是<b>原始对象</b>的引用，
+     * 绕过了 Spring 生成的代理对象，所以 @Async 完全不起作用，
+     * 代码会<b>同步执行</b>（日志线程名还是 http-nio-...）。</p>
+     *
+     * <p><b>正确做法有两种：</b></p>
+     * <ol>
+     *     <li>把异步方法挪到另一个 Bean 里（比如本类拆成 OrderLogAsyncService）</li>
+     *     <li>自己注入自己：{@code @Autowired private OrderAsyncService self; }
+     *         然后调 {@code self.asyncRecordLog(...)}（Spring 允许，但要注意循环依赖）</li>
+     * </ol>
+     *
+     * <p><b>⚠️ 同一个坑还有两个"兄弟"：</b>{@code @Transactional} 自调用失效、
+     * {@code @Cacheable} 自调用失效。三个注解失效的原理<b>完全一样</b>，
+     * 都是"动态代理被绕过"。记住这一条，面试能答一大片题。</p>
+     */
     public void selfInvocationDemo(String orderNo) {
-        log.info("\u3010\u9519\u8bef\u793a\u8303\u3011\u5373\u5c06\u901a\u8fc7 this \u8c03\u7528 @Async \u65b9\u6cd5 | thread={}", (Object)Thread.currentThread().getName());
-        this.asyncRecordLog(orderNo, "\u540c\u7c7b\u5185\u90e8\u8c03\u7528 @Async \u2014\u2014 \u672c\u5e94\u5f02\u6b65\uff0c\u5b9e\u9645\u540c\u6b65");
-        log.info("\u3010\u9519\u8bef\u793a\u8303\u3011this \u8c03\u7528\u8fd4\u56de | thread={}\uff08\u7ebf\u7a0b\u540d\u6ca1\u53d8\u8bf4\u660e\u5f02\u6b65\u5931\u6548\uff09", (Object)Thread.currentThread().getName());
-    }
-
-    public OrderAsyncService(OrderLogMapper orderLogMapper) {
-        this.orderLogMapper = orderLogMapper;
+        log.info("【错误示范】即将通过 this 调用 @Async 方法 | thread={}", Thread.currentThread().getName());
+        this.asyncRecordLog(orderNo, "同类内部调用 @Async —— 本应异步，实际同步");
+        log.info("【错误示范】this 调用返回 | thread={}（线程名没变说明异步失效）",
+                Thread.currentThread().getName());
     }
 }
-

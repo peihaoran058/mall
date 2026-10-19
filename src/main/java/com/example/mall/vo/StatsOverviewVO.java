@@ -69,17 +69,5 @@ public class StatsOverviewVO implements Serializable {
     /**
      * 图表通用数据项。
      */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ChartItem implements Serializable {
 
-        private static final long serialVersionUID = 1L;
-
-        /** 维度名称，如 "已发货" / "2026-09-20" / 商品名 */
-        private String name;
-
-        /** 指标值 */
-        private Long value;
-    }
 }

@@ -4,9 +4,13 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.mall.dto.OrderQueryDTO;
 import com.example.mall.entity.Orders;
+import com.example.mall.vo.ChartItem;
+import com.example.mall.vo.StatsOverviewVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 @Mapper
 public interface OrdersMapper extends BaseMapper<Orders> {
@@ -14,4 +18,8 @@ public interface OrdersMapper extends BaseMapper<Orders> {
 
     @Select("select * from orders where order_no = #{orderNo}")
     Orders selectBYOrderNo(String orderNo);
+
+    List<ChartItem> selectOrderStatusDist();
+
+    List<ChartItem> selectOrderTrend();
 }
